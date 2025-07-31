@@ -130,6 +130,7 @@ pub async fn find_first_slot(
     }
 }
 
+
 #[server(StartAutoFind)]
 pub async fn start_auto_find(
     before: String,
@@ -165,6 +166,7 @@ pub async fn get_auto_find_status() -> Result<bool, ServerFnError> {
     Ok(BookingManager::auto_find_running())
 }
 
+
 #[component]
 pub fn HomePage() -> impl IntoView {
     let (address_input, set_address_input) = create_signal(String::new());
@@ -187,11 +189,13 @@ pub fn HomePage() -> impl IntoView {
     let (latest_date_input, set_latest_date_input) = create_signal(String::new());
     let (find_slot_msg, set_find_slot_msg) = create_signal::<Option<String>>(None);
 
+
     // auto finder state
     let (show_auto_panel, set_show_auto_panel) = create_signal(false);
     let (auto_active, set_auto_active) = create_signal(false);
     let (selected_locations, set_selected_locations) = create_signal(Vec::<String>::new());
     let (auto_msg, set_auto_msg) = create_signal::<Option<String>>(None);
+
 
     let (reset_sort_trigger, set_reset_sort_trigger) = create_signal(());
 
@@ -303,6 +307,7 @@ leptos::task::spawn_local(async move {
             }
         });
     };
+
 
     let toggle_location = move |loc: String| {
         let mut current = selected_locations.get();
@@ -503,6 +508,7 @@ leptos::task::spawn_local(async move {
                     {move || match find_slot_msg.get() { Some(ref m) => m.clone(), None => String::new() }}
                 </div>
 
+
                 {move || if show_auto_panel.get() {
                     view! {
                         <div class="mt-4 p-4 border rounded-md w-full">
@@ -530,6 +536,7 @@ leptos::task::spawn_local(async move {
                     }
                 } else { view!{ <div class="hidden"></div> } }
                 }
+
             </div>
 
             <LocationsTable

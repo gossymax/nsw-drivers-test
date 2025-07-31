@@ -294,6 +294,7 @@ pub async fn book_first_available(
                     .unwrap_or(false)
             })
         {
+
             match try_book_slot(&loc, &slot, settings).await {
                 Ok(_) => {
                     println!("Booked slot {} at {}", loc, slot.start_time);
@@ -303,12 +304,18 @@ pub async fn book_first_available(
                     eprintln!("Error booking slot at {}: {}", loc, e);
                 }
             }
+
+            // TODO: implement DOM interaction to select the slot and confirm the booking
+            println!("Would attempt to book {} at {}", loc, slot.start_time);
+            return Ok(Some((loc, slot.start_time.clone())));
+
         }
     }
 
     println!("No available slots before {} found in approved locations", before);
     Ok(None)
 }
+
 
 /// Attempt to book the given slot at the specified location using the provided settings.
 /// This implementation provides a best-effort attempt and may require adjusting
@@ -407,3 +414,5 @@ async fn try_book_slot(location: &str, slot: &TimeSlot, settings: &Settings) -> 
     driver.quit().await?;
     Ok(())
 }
+=======
+
