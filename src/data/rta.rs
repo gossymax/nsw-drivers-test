@@ -294,12 +294,125 @@ pub async fn book_first_available(
                     .unwrap_or(false)
             })
         {
+
+            match try_book_slot(&loc, &slot, settings).await {
+                Ok(_) => {
+                    println!("Booked slot {} at {}", loc, slot.start_time);
+                    return Ok(Some((loc, slot.start_time.clone())));
+                }
+                Err(e) => {
+                    eprintln!("Error booking slot at {}: {}", loc, e);
+                }
+            }
+
             // TODO: implement DOM interaction to select the slot and confirm the booking
             println!("Would attempt to book {} at {}", loc, slot.start_time);
             return Ok(Some((loc, slot.start_time.clone())));
+
         }
     }
 
     println!("No available slots before {} found in approved locations", before);
     Ok(None)
 }
+
+
+/// Attempt to book the given slot at the specified location using the provided settings.
+/// This implementation provides a best-effort attempt and may require adjusting
+/// element selectors to match the Service NSW website.
+async fn try_book_slot(location: &str, slot: &TimeSlot, settings: &Settings) -> WebDriverResult<()> {
+    let mut caps = DesiredCapabilities::chrome();
+    if settings.headless {
+        caps.add_arg("--headless=new")?;
+    }
+    caps.add_arg("--no-sandbox")?;
+    caps.add_arg("--disable-dev-shm-usage")?;
+    caps.add_arg("--window-size=1920,1080")?;
+    caps.add_arg("--start-maximized")?;
+    caps.add_experimental_option("excludeSwitches", vec!["enable-automation"]);
+    caps.add_experimental_option("useAutomationExtension", false);
+
+    let driver = WebDriver::new(settings.selenium_driver_url.clone(), caps).await?;
+
+    let timeout = Duration::from_millis(settings.selenium_element_timout);
+    let polling = Duration::from_millis(settings.selenium_element_polling);
+
+    // Login using booking id and last name
+    driver.goto("https://www.myrta.com/wps/portal/extvp/myrta/login/").await?;
+    random_sleep(1000, 2000).await;
+
+    let booking_input = driver.query(By::Id("widget_bookingId")).first().await?;
+    booking_input.wait_until().wait(timeout, polling).displayed().await?;
+    type_like_human(&booking_input, &settings.booking_id, 60, 180).await?;
+    random_sleep(300, 700).await;
+
+    let last_name_input = driver.query(By::Id("widget_lastName")).first().await?;
+    last_name_input.wait_until().wait(timeout, polling).displayed().await?;
+    type_like_human(&last_name_input, &settings.last_name, 60, 180).await?;
+    random_sleep(400, 800).await;
+
+    let next_button = driver.query(By::Id("nextButton")).first().await?;
+    next_button.wait_until().wait(timeout, polling).displayed().await?;
+    next_button.click().await?;
+    random_sleep(1500, 2500).await;
+
+    if settings.have_booking {
+        let manage_booking = driver.query(By::XPath("//*[text()='Manage booking']")).first().await?;
+        manage_booking.wait_until().wait(timeout, polling).displayed().await?;
+        manage_booking.click().await?;
+        random_sleep(1500, 2500).await;
+
+        let change_location = driver.query(By::Id("changeLocationButton")).first().await?;
+        change_location.wait_until().wait(timeout, polling).displayed().await?;
+        change_location.click().await?;
+        random_sleep(1000, 2000).await;
+    } else {
+        let book_test = driver.query(By::XPath("//*[text()='Book test']")).first().await?;
+        book_test.wait_until().wait(timeout, polling).displayed().await?;
+        book_test.click().await?;
+        random_sleep(1500, 2500).await;
+    }
+
+    // Select location
+    let dropdown = driver.query(By::Id("rms_batLocLocSelect")).first().await?;
+    dropdown.wait_until().wait(timeout, polling).displayed().await?;
+    dropdown.click().await?;
+    random_sleep(500, 1000).await;
+
+    let select_element_query = driver.query(By::Id("rms_batLocationSelect2"));
+    let select_element = select_element_query.wait(timeout, polling).first().await?;
+    let select_box = SelectElement::new(&select_element).await?;
+    select_box.select_by_value(location).await?;
+    random_sleep(2500, 3500).await;
+
+    let next_button_loc = driver.query(By::Id("nextButton")).first().await?;
+    next_button_loc.wait_until().wait(timeout, polling).displayed().await?;
+    next_button_loc.click().await?;
+    random_sleep(1500, 2500).await;
+
+    // Attempt to select the desired timeslot
+    if let Some(slot_num) = slot.slot_number {
+        if let Ok(slot_button) = driver.query(By::Id(&format!("slot-{}", slot_num))).first().await {
+            slot_button.wait_until().wait(timeout, polling).displayed().await?;
+            slot_button.click().await?;
+            random_sleep(500, 1000).await;
+        }
+    } else {
+        if let Ok(slot_button) = driver.query(By::XPath(&format!("//*[contains(text(), '{}')]", slot.start_time))).first().await {
+            slot_button.wait_until().wait(timeout, polling).displayed().await?;
+            slot_button.click().await?;
+            random_sleep(500, 1000).await;
+        }
+    }
+
+    if let Ok(confirm) = driver.query(By::Id("confirmButton")).first().await {
+        confirm.wait_until().wait(timeout, polling).displayed().await?;
+        confirm.click().await?;
+        random_sleep(1000, 2000).await;
+    }
+
+    driver.quit().await?;
+    Ok(())
+}
+=======
+

@@ -6,12 +6,14 @@ use std::hash::{DefaultHasher, Hasher};
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
+use chrono::NaiveDate;
 
 use super::shared_booking::{BookingData, LocationBookings, TimeSlot};
 use crate::settings::Settings;
 
 static BOOKING_DATA: OnceLock<Arc<RwLock<(BookingData, String)>>> = OnceLock::new();
 static BACKGROUND_RUNNING: OnceLock<Arc<RwLock<bool>>> = OnceLock::new();
+static AUTO_FIND_RUNNING: OnceLock<Arc<RwLock<bool>>> = OnceLock::new();
 
 fn get_booking_data() -> &'static Arc<RwLock<(BookingData, String)>> {
     BOOKING_DATA.get_or_init(|| Arc::new(RwLock::new((BookingData::default(), String::new()))))
@@ -19,6 +21,10 @@ fn get_booking_data() -> &'static Arc<RwLock<(BookingData, String)>> {
 
 fn get_background_status() -> &'static Arc<RwLock<bool>> {
     BACKGROUND_RUNNING.get_or_init(|| Arc::new(RwLock::new(false)))
+}
+
+fn get_auto_status() -> &'static Arc<RwLock<bool>> {
+    AUTO_FIND_RUNNING.get_or_init(|| Arc::new(RwLock::new(false)))
 }
 
 pub struct BookingManager;
@@ -155,6 +161,39 @@ impl BookingManager {
     pub fn stop_background_updates() {
         let mut running = get_background_status().write().unwrap();
         *running = false;
+    }
+
+    pub fn auto_find_running() -> bool {
+        *get_auto_status().read().unwrap()
+    }
+
+    pub fn stop_auto_find() {
+        let mut running = get_auto_status().write().unwrap();
+        *running = false;
+    }
+
+    pub fn start_auto_find(locations: Vec<String>, before: chrono::NaiveDate, settings: Settings) {
+        {
+            let mut running = get_auto_status().write().unwrap();
+            if *running {
+                return;
+            }
+            *running = true;
+        }
+
+        let running_status = Arc::clone(get_auto_status());
+
+        tokio::spawn(async move {
+            let interval = Duration::from_secs(settings.scrape_refresh_minutes * 60);
+            while *running_status.read().unwrap() {
+                match super::rta::book_first_available(locations.clone(), before, &settings).await {
+                    Ok(Some((loc, time))) => println!("Found slot at {} on {}", loc, time),
+                    Ok(None) => println!("No slot found before {}", before),
+                    Err(e) => eprintln!("Error searching slots: {}", e),
+                }
+                tokio::time::sleep(interval).await;
+            }
+        });
     }
 
     pub async fn perform_update(locations: Vec<String>, file_path: &str, settings: Settings) {
