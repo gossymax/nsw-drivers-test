@@ -14,8 +14,8 @@ use std::path::Path;
 #[derive(Deserialize, Clone)]
 pub struct Settings {
     pub headless: bool,
-    pub username: String,
-    pub password: String,
+    pub booking_id: String,
+    pub last_name: String,
     pub have_booking: bool,
     pub selenium_driver_url: String,
     pub selenium_element_timout: u64,
@@ -31,9 +31,9 @@ impl Settings {
         file.read_to_string(&mut contents)?;
         
         let mut settings: Settings = serde_yaml::from_str(&contents)?;
-        
-        settings.username = parse_env_var(&settings.username)?;
-        settings.password = parse_env_var(&settings.password)?;
+
+        settings.booking_id = parse_env_var(&settings.booking_id)?;
+        settings.last_name = parse_env_var(&settings.last_name)?;
         
         Ok(settings)
     }
@@ -172,16 +172,17 @@ pub async fn scrape_rta_timeslots(
     driver.goto("https://www.myrta.com/wps/portal/extvp/myrta/login/").await?;
     random_sleep(1000, 2000).await;
 
-    let username_input = driver.query(By::Id("widget_cardNumber")).first().await?;
-    username_input.wait_until().wait(timeout, polling).displayed().await?;
+    // Use booking details instead of username/password
+    let booking_input = driver.query(By::Id("widget_bookingId")).first().await?;
+    booking_input.wait_until().wait(timeout, polling).displayed().await?;
     random_sleep(200, 500).await;
-    type_like_human(&username_input, &settings.username, 60, 180).await?;
+    type_like_human(&booking_input, &settings.booking_id, 60, 180).await?;
     random_sleep(300, 700).await;
 
-    let password_input = driver.query(By::Id("widget_password")).first().await?;
-    password_input.wait_until().wait(timeout, polling).displayed().await?;
+    let last_name_input = driver.query(By::Id("widget_lastName")).first().await?;
+    last_name_input.wait_until().wait(timeout, polling).displayed().await?;
     random_sleep(200, 500).await;
-    type_like_human(&password_input, &settings.password, 60, 180).await?;
+    type_like_human(&last_name_input, &settings.last_name, 60, 180).await?;
     random_sleep(400, 800).await;
 
     let next_button = driver.query(By::Id("nextButton")).first().await?;
@@ -378,18 +379,18 @@ async fn main() {
     settings.headless = false;
     let env_content = include_str!("../../../.env");
 
-    let (username, password) = env_content
+    let (booking_id, last_name) = env_content
         .lines()
         .filter_map(|line| line.split_once('='))
         .map(|(key, value)| (key.trim(), value.trim()))
-        .fold((None, None), |(mut u, mut p), (k, v)| {
-            if k == "USERNAME" { u = Some(v.to_string()); }
-            if k == "PASSWORD" { p = Some(v.to_string()); }
-            (u, p)
+        .fold((None, None), |(mut b, mut l), (k, v)| {
+            if k == "BOOKING_ID" { b = Some(v.to_string()); }
+            if k == "LAST_NAME" { l = Some(v.to_string()); }
+            (b, l)
         });
 
-    settings.username = username.unwrap();
-    settings.password = password.unwrap();
+    settings.booking_id = booking_id.unwrap();
+    settings.last_name = last_name.unwrap();
     
     let locations = vec!["Queanbeyan", "Yass", "Finley", "Hornsby", "Armidale", "Auburn", "Ballina"];
     let locations = locations.into_iter().map(|a| a.to_string()).collect();
