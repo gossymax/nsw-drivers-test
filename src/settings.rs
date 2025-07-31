@@ -8,14 +8,17 @@ use dotenv::dotenv;
 #[derive(Deserialize, Clone)]
 pub struct Settings {
     pub headless: bool,
-    pub username: String,
-    pub password: String,
+    /// Booking reference number used when managing an existing booking
+    pub booking_id: String,
+    /// Last name associated with the booking
+    pub last_name: String,
     pub have_booking: bool,
     pub selenium_driver_url: String,
     pub selenium_element_timout: u64,
     pub selenium_element_polling: u64,
     pub retries: u64,
-    pub scrape_refresh_time: u64,
+    /// How often to refresh scraping in minutes
+    pub scrape_refresh_minutes: u64,
 }
 
 impl Settings {
@@ -27,9 +30,9 @@ impl Settings {
         file.read_to_string(&mut contents)?;
         
         let mut settings: Settings = serde_yaml::from_str(&contents)?;
-        
-        settings.username = parse_env_var(&settings.username)?;
-        settings.password = parse_env_var(&settings.password)?;
+
+        settings.booking_id = parse_env_var(&settings.booking_id)?;
+        settings.last_name = parse_env_var(&settings.last_name)?;
         
         Ok(settings)
     }

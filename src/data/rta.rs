@@ -73,16 +73,17 @@ pub async fn scrape_rta_timeslots(
     driver.goto("https://www.myrta.com/wps/portal/extvp/myrta/login/").await?;
     random_sleep(1000, 2000).await;
 
-    let username_input = driver.query(By::Id("widget_cardNumber")).first().await?;
-    username_input.wait_until().wait(timeout, polling).displayed().await?;
+    // Use booking id and last name for login when modifying an existing booking
+    let booking_input = driver.query(By::Id("widget_bookingId")).first().await?;
+    booking_input.wait_until().wait(timeout, polling).displayed().await?;
     random_sleep(200, 500).await;
-    type_like_human(&username_input, &settings.username, 60, 180).await?;
+    type_like_human(&booking_input, &settings.booking_id, 60, 180).await?;
     random_sleep(300, 700).await;
 
-    let password_input = driver.query(By::Id("widget_password")).first().await?;
-    password_input.wait_until().wait(timeout, polling).displayed().await?;
+    let last_name_input = driver.query(By::Id("widget_lastName")).first().await?;
+    last_name_input.wait_until().wait(timeout, polling).displayed().await?;
     random_sleep(200, 500).await;
-    type_like_human(&password_input, &settings.password, 60, 180).await?;
+    type_like_human(&last_name_input, &settings.last_name, 60, 180).await?;
     random_sleep(400, 800).await;
 
     let next_button = driver.query(By::Id("nextButton")).first().await?;
@@ -270,4 +271,35 @@ pub async fn scrape_rta_timeslots(
     driver.quit().await?;
 
     Ok(location_bookings)
+}
+
+/// Search approved locations for a slot before a given date and attempt to book it.
+/// The booking process is highly dependent on the Service NSW website and may
+/// require adjusting the element selectors.
+pub async fn book_first_available(
+    locations: Vec<String>,
+    before: chrono::NaiveDate,
+    settings: &Settings,
+) -> WebDriverResult<Option<(String, String)>> {
+    let bookings = scrape_rta_timeslots(locations.clone(), settings).await?;
+
+    for (loc, info) in bookings {
+        if let Some(slot) = info
+            .slots
+            .iter()
+            .filter(|s| s.availability)
+            .find(|s| {
+                chrono::NaiveDateTime::parse_from_str(&s.start_time, "%d/%m/%Y %H:%M")
+                    .map(|dt| dt.date() <= before)
+                    .unwrap_or(false)
+            })
+        {
+            // TODO: implement DOM interaction to select the slot and confirm the booking
+            println!("Would attempt to book {} at {}", loc, slot.start_time);
+            return Ok(Some((loc, slot.start_time.clone())));
+        }
+    }
+
+    println!("No available slots before {} found in approved locations", before);
+    Ok(None)
 }
