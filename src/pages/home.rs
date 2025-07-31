@@ -99,6 +99,37 @@ pub async fn get_location_details(
     }))
 }
 
+#[server(FindFirstSlot)]
+pub async fn find_first_slot(
+    before: String,
+    booking_id: String,
+    last_name: String,
+) -> Result<Option<(String, String)>, ServerFnError> {
+    use crate::data::booking::BookingManager;
+    use crate::data::rta::book_first_available;
+    use crate::settings::Settings;
+
+    let date = chrono::NaiveDate::parse_from_str(&before, "%Y-%m-%d")
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(e.to_string()))?;
+
+    let mut settings = Settings::from_yaml("settings.yaml")
+        .map_err(|e| ServerFnError::<NoCustomError>::ServerError(e.to_string()))?;
+    settings.booking_id = booking_id;
+    settings.last_name = last_name;
+
+    let locations: Vec<String> = BookingManager::get_data()
+        .0
+        .results
+        .iter()
+        .map(|l| l.location.clone())
+        .collect();
+
+    match book_first_available(locations, date, &settings).await {
+        Ok(res) => Ok(res),
+        Err(e) => Err(ServerFnError::<NoCustomError>::ServerError(e.to_string())),
+    }
+}
+
 #[component]
 pub fn HomePage() -> impl IntoView {
     let (address_input, set_address_input) = create_signal(String::new());
@@ -114,6 +145,12 @@ pub fn HomePage() -> impl IntoView {
     let (is_fetching_bookings, set_is_fetching_bookings) = create_signal(false);
 
     let (booking_etag, set_booking_etag) = create_signal(String::new());
+
+    // inputs for booking search
+    let (booking_id_input, set_booking_id_input) = create_signal(String::new());
+    let (last_name_input, set_last_name_input) = create_signal(String::new());
+    let (latest_date_input, set_latest_date_input) = create_signal(String::new());
+    let (find_slot_msg, set_find_slot_msg) = create_signal::<Option<String>>(None);
 
     let (reset_sort_trigger, set_reset_sort_trigger) = create_signal(());
 
@@ -154,7 +191,7 @@ pub fn HomePage() -> impl IntoView {
                 leptos::logging::log!("Triggering refresh");
                 fetch_bookings();
             },
-            Duration::from_secs(600),
+            Duration::from_secs(1200),
         )
         .expect("failed to set interval");
 
@@ -188,6 +225,32 @@ pub fn HomePage() -> impl IntoView {
                 Err(err) => {
                     set_geocoding_status(Some(format!("Error: {}", err)));
                     set_is_loading(false);
+                }
+            }
+        });
+    };
+
+    let handle_find_slot = move |_| {
+        let booking = booking_id_input.get();
+        let last = last_name_input.get();
+        let date = latest_date_input.get();
+
+        if booking.is_empty() || last.is_empty() || date.is_empty() {
+            set_find_slot_msg(Some("Please fill in all fields".to_string()));
+            return;
+        }
+
+        set_find_slot_msg(Some("Searching...".to_string()));
+        leptos::task::spawn_local(async move {
+            match find_first_slot(date.clone(), booking, last).await {
+                Ok(Some((loc, time))) => {
+                    set_find_slot_msg(Some(format!("Found slot at {} on {}", loc, time)));
+                }
+                Ok(None) => {
+                    set_find_slot_msg(Some("No slot found".to_string()));
+                }
+                Err(e) => {
+                    set_find_slot_msg(Some(format!("Error: {e}")));
                 }
             }
         });
@@ -308,6 +371,36 @@ pub fn HomePage() -> impl IntoView {
                   <span class="text-amber-600">These rates are estimates only.</span>
                   " Data is from 2022-2025 C Class Driver tests."
                 </p>
+
+                <div class="mt-4 flex flex-wrap gap-4 items-end">
+                    <input
+                        type="text"
+                        class="px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Booking ID"
+                        prop:value={booking_id_input}
+                        on:input=move |ev| set_booking_id_input(event_target_value(&ev))
+                    />
+                    <input
+                        type="text"
+                        class="px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Last name"
+                        prop:value={last_name_input}
+                        on:input=move |ev| set_last_name_input(event_target_value(&ev))
+                    />
+                    <input
+                        type="date"
+                        class="px-3 py-2 border border-gray-300 rounded-md"
+                        prop:value={latest_date_input}
+                        on:input=move |ev| set_latest_date_input(event_target_value(&ev))
+                    />
+                    <button
+                        class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                        on:click=move |_| handle_find_slot(())
+                    >"Go"</button>
+                </div>
+                <div class="mt-2 text-sm text-emerald-600">
+                    {move || match find_slot_msg.get() { Some(ref m) => m.clone(), None => String::new() }}
+                </div>
             </div>
 
             <LocationsTable
