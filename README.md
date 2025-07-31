@@ -29,6 +29,8 @@ NSW Drivers Test is a web application that helps learner drivers find the earlie
 - **Privacy-focused**: Location searches processed locally in your browser
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 - **No Login Required**: No Service NSW credentials needed to view availability
+- **Auto Test Finder**: Enter your booking reference and last name to search
+  approved locations for earlier slots and automatically book them
 
 ## Installation
 
